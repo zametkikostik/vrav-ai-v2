@@ -1,0 +1,17 @@
+# Example: agent + optional local ollama side-by-side
+# Usage: docker compose up agent
+# Set TELEGRAM_BOT_TOKEN in .env for telegram mode
+
+services:
+  agent:
+    build: .
+    network_mode: host
+    environment:
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://127.0.0.1:11434}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS:-}
+    volumes:
+      - ./data:/app/data
+    command: ["cli"]
+    stdin_open: true
+    tty: true

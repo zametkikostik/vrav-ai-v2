@@ -1,0 +1,28 @@
+[project]
+name = "clean-agent"
+version = "0.1.0"
+description = "Clean-room local AI agent with tools, memory, skills and self-improvement. Built for Ollama / BgGPT."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Clean Agent Contributors" }]
+dependencies = [
+    "ollama>=0.4.0",
+    "pydantic>=2.0",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+telegram = ["python-telegram-bot>=21.0"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+clean-agent = "main:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "memory*", "channels*", "skills*"]
