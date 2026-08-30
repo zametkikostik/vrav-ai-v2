@@ -1,4 +1,4 @@
-# Clean Agent
+# Clean Agent (Vrav AI v2)
 
 Production **clean-room** local AI agent for Ollama / BgGPT.
 
@@ -11,80 +11,50 @@ MIT licensed. No proprietary code.
 | temperature 0.12 | Less invention |
 | Tool-first prompt | Verify before stating facts |
 | Forced reflection | Extra check when no tools used |
+| **Verifier pass** | Second LLM pass strips unsupported claims |
 | Real tool output only | No fabricated stdout/files |
 | Permission gate | Blocks dangerous bash / system writes |
-| Source citation | Answers should reference tools/memory |
+| web_search + URL citation | Ground current facts |
 
 ## Features
 
-- Agentic loop + tools (bash, files, memory, skills, **sub-agents**)
+- Agentic loop + tools (bash, files, memory, skills, sub-agents, **web_search**)
 - Long-term memory (SQLite FTS5 + MEMORY.md)
-- **Dream** — consolidate memory; auto after 5 sessions
-- **Telegram** bot channel
-- **Health / status** check
-- Logging, permissions, Docker
+- Dream — consolidate memory; auto after 5 sessions
+- Telegram bot channel
+- Health / status check
+- Logging, permissions, Docker, CI
 
 ## Quick start
 
 ```bash
 pip install -e .
-# optional Telegram:
-pip install -e ".[telegram]"
+pip install -e ".[telegram]"   # optional
 
-ollama list   # need a tool-calling model
+ollama list
 
-python main.py                    # CLI
+python main.py
 python main.py -m bggpt-gemma3-12b
-python main.py --confirm          # confirm risky bash
+python main.py --confirm
 python main.py dream
 python main.py status
-python main.py telegram           # needs TELEGRAM_BOT_TOKEN
+python main.py telegram
 ```
 
 ### Telegram
 
 ```bash
 export TELEGRAM_BOT_TOKEN=123:ABC
-export TELEGRAM_ALLOWED_USERS=111,222   # optional whitelist
+export TELEGRAM_ALLOWED_USERS=111,222
 python main.py telegram
 ```
-
-Commands in chat: `/start` `/help` `/dream` `/status` + free text tasks.
 
 ### Docker
 
 ```bash
 docker build -t clean-agent .
-docker run --rm -it --network host \
-  -v $(pwd)/data:/app/data \
-  -e OLLAMA_HOST=http://127.0.0.1:11434 \
-  clean-agent cli
-
-# or compose
-cp .env.example .env   # fill token if needed
-docker compose run --rm agent status
+docker run --rm -it --network host -v $(pwd)/data:/app/data clean-agent status
 ```
-
-## Layout
-
-```
-main.py
-config.py
-core/          loop, llm, tools, permissions, prompts, subagent, health, logging
-memory/        store, dream
-channels/      cli, telegram_bot
-skills/
-Dockerfile
-docker-compose.yml
-```
-
-## Safety
-
-- Bash denylist + blocked regex patterns
-- `--confirm` for caution commands
-- No writes under `/etc`, `/usr`, `/bin`, …
-- Telegram user allowlist via env
-- Prefer container or dedicated user in production
 
 ## License
 
