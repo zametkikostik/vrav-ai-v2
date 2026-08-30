@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.env
+agent_memory.db
+memory/MEMORY.md
+*.log
+.DS_Store
+.idea/
+.vscode/
