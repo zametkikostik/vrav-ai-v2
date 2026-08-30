@@ -12,16 +12,11 @@ from core.prompts import SYSTEM_PROMPT, REFLECTION_HINT, FINAL_FORMAT_HINT
 from core.tools import TOOLS_SPEC, execute_tool
 from memory.store import init_memory, add_memory, load_static_context
 from memory.dream import note_session, maybe_auto_dream
+from core.verifier import verify_answer
 
 
 def run_agent(user_message: str, verbose: bool = True) -> str:
-    """
-    Agentic loop tuned for local models (BgGPT etc.):
-    - tool-first policy
-    - low temperature
-    - optional reflection before pure-text final answer
-    - every factual claim should come from tools or memory
-    """
+    """Agentic loop: tool-first, low temperature, reflection, verifier."""
     init_memory()
     context = load_static_context()
 
@@ -35,6 +30,7 @@ def run_agent(user_message: str, verbose: bool = True) -> str:
     ]
 
     tools_used: list[str] = []
+    tool_trace: list[dict] = []
     reflection_done = False
 
     for turn in range(cfg.max_turns):
@@ -68,9 +64,8 @@ def run_agent(user_message: str, verbose: bool = True) -> str:
                 log.info("reflection pass triggered (no tools used yet)")
                 continue
 
-            if tools_used and "source" not in final.lower() and "tool" not in final.lower():
-                pass
-
+            if getattr(cfg, "use_verifier", True):
+                final = verify_answer(user_message, final, tool_trace)
             add_memory(
                 f"User: {user_message}\nAgent: {final[:1500]}\nTools: {tools_used}"
             )
@@ -98,6 +93,9 @@ def run_agent(user_message: str, verbose: bool = True) -> str:
             log.info("tool_call name=%s args=%s", name, args)
 
             result = execute_tool(name, args)
+            tool_trace.append(
+                {"name": name, "args": args, "output": result.output, "success": result.success}
+            )
 
             if verbose:
                 preview = result.output[:280].replace("\n", " ")
