@@ -15,14 +15,17 @@ def main() -> None:
         nargs="?",
         default="cli",
         choices=["cli", "dream", "telegram", "status", "cron-dream"],
-        help="cli | dream | telegram | status | cron-dream",
     )
     parser.add_argument("-m", "--model", help="Override Ollama model tag")
     parser.add_argument("--confirm", action="store_true")
     parser.add_argument("--no-reflection", action="store_true")
     parser.add_argument("--json", action="store_true", help="CLI: structured JSON answers")
-    parser.add_argument("--interval-hours", type=float, default=None,
-                        help="cron-dream interval hours")
+    parser.add_argument("--interval-hours", type=float, default=None)
+    parser.add_argument(
+        "--cron",
+        default=None,
+        help='cron-dream: 5-field expression e.g. "0 */6 * * *"',
+    )
     args = parser.parse_args()
 
     from config import cfg
@@ -49,7 +52,7 @@ def main() -> None:
     elif args.command == "cron-dream":
         from core.scheduler import run_dream_cron
         hours = args.interval_hours if args.interval_hours is not None else cfg.dream_cron_hours
-        run_dream_cron(interval_hours=hours)
+        run_dream_cron(interval_hours=hours, cron_expr=args.cron)
     else:
         from channels.cli import run_cli
         run_cli(json_mode=args.json)
