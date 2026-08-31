@@ -15,6 +15,10 @@ class Config:
     max_turns: int = 14
     force_reflection: bool = True
     use_verifier: bool = True
+    structured_output: bool = True
+    tg_max_calls: int = 20
+    tg_window_seconds: float = 60.0
+    dream_cron_hours: float = 6.0
 
     root: Path = field(default_factory=lambda: Path(os.environ.get("CLEAN_AGENT_ROOT", Path(__file__).resolve().parent)))
     memory_dir: Path = field(init=False)
