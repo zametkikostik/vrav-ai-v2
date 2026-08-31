@@ -4,56 +4,52 @@ Production **clean-room** local AI agent for Ollama / BgGPT.
 
 MIT licensed. No proprietary code.
 
-## Anti-hallucination (BgGPT)
+## Anti-hallucination
 
 | Mechanism | Effect |
 |-----------|--------|
 | temperature 0.12 | Less invention |
 | Tool-first prompt | Verify before stating facts |
 | Forced reflection | Extra check when no tools used |
-| **Verifier pass** | Second LLM pass strips unsupported claims |
-| Real tool output only | No fabricated stdout/files |
+| **Verifier pass** | Strips unsupported claims |
+| **Structured answer** | answer + sources + confidence |
 | Permission gate | Blocks dangerous bash / system writes |
 | web_search + URL citation | Ground current facts |
 
 ## Features
 
-- Agentic loop + tools (bash, files, memory, skills, sub-agents, **web_search**)
-- Long-term memory (SQLite FTS5 + MEMORY.md)
-- Dream — consolidate memory; auto after 5 sessions
-- Telegram bot channel
-- Health / status check
-- Logging, permissions, Docker, CI
+- Tools: bash, files, memory, skills, sub-agents, web_search
+- Memory + Dream (manual, auto after 5 sessions, **cron**)
+- Telegram with **rate limit** (default 20 req / 60s per user)
+- Structured JSON output (`--json`)
+- Docker + CI
 
 ## Quick start
 
 ```bash
-pip install -e .
-pip install -e ".[telegram]"   # optional
-
-ollama list
-
-python main.py
-python main.py -m bggpt-gemma3-12b
-python main.py --confirm
-python main.py dream
+pip install -e ".[telegram]"
 python main.py status
+python main.py -m bggpt-gemma3-12b
+python main.py --json
+python main.py dream
+python main.py cron-dream --interval-hours 6
 python main.py telegram
 ```
 
-### Telegram
+### Telegram rate limit
+
+Configured in `config.py`: `tg_max_calls`, `tg_window_seconds`.
+
+### Dream cron
 
 ```bash
-export TELEGRAM_BOT_TOKEN=123:ABC
-export TELEGRAM_ALLOWED_USERS=111,222
-python main.py telegram
+python main.py cron-dream --interval-hours 6
 ```
 
-### Docker
+## Tests
 
 ```bash
-docker build -t clean-agent .
-docker run --rm -it --network host -v $(pwd)/data:/app/data clean-agent status
+python -m pytest tests/ -q
 ```
 
 ## License

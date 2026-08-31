@@ -3,7 +3,7 @@
 Requires:
   pip install 'python-telegram-bot>=21'
   export TELEGRAM_BOT_TOKEN=...
-  optionally TELEGRAM_ALLOWED_USERS=123,456  (comma-separated user ids)
+  optionally TELEGRAM_ALLOWED_USERS=123,456
 """
 
 from __future__ import annotations
@@ -12,16 +12,30 @@ import asyncio
 import os
 from typing import Set
 
+from config import cfg
 from core.logging_setup import log
 from core.loop import run_agent
+from core.ratelimit import RateLimiter
+from core.response import AgentAnswer
 from memory.dream import dream
+
+_limiter = RateLimiter(
+    max_calls=getattr(cfg, "tg_max_calls", 20),
+    window_seconds=getattr(cfg, "tg_window_seconds", 60.0),
+)
 
 
 def _allowed_users() -> Set[int] | None:
     raw = os.environ.get("TELEGRAM_ALLOWED_USERS", "").strip()
     if not raw:
-        return None  # allow everyone (dev mode)
+        return None
     return {int(x.strip()) for x in raw.split(",") if x.strip().isdigit()}
+
+
+def _format_answer(result: str | AgentAnswer) -> str:
+    if isinstance(result, AgentAnswer):
+        return result.to_text()
+    return str(result)
 
 
 def run_telegram() -> None:
@@ -58,28 +72,35 @@ def run_telegram() -> None:
             return False
         return True
 
+    async def _rate_ok(update: Update) -> bool:
+        user = update.effective_user
+        key = str(user.id) if user else "anon"
+        if not _limiter.allow(key):
+            rem = _limiter.remaining(key)
+            await update.effective_message.reply_text(
+                f"Rate limit exceeded. Try again later. (remaining={rem})"
+            )
+            log.warning("telegram rate limit user=%s", key)
+            return False
+        return True
+
     async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await _authorized(update):
             return
         await update.message.reply_text(
-            "Clean Agent online.\n"
-            "Send a task in plain text.\n"
-            "Commands: /dream /status /help"
+            "Clean Agent online.\nSend a task in plain text.\nCommands: /dream /status /help"
         )
 
     async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await _authorized(update):
             return
         await update.message.reply_text(
-            "/start — hello\n"
-            "/dream — consolidate memory\n"
-            "/status — model & config\n"
-            "/help — this message\n"
-            "Any other text — run the agent"
+            "/start — hello\n/dream — consolidate memory\n/status — model & config\n"
+            "/help — this message\nAny other text — run the agent"
         )
 
     async def cmd_dream(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        if not await _authorized(update):
+        if not await _authorized(update) or not await _rate_ok(update):
             return
         await update.message.reply_text("Running dream…")
         result = await asyncio.to_thread(dream)
@@ -90,10 +111,14 @@ def run_telegram() -> None:
             return
         from core.health import health_report
         report = await asyncio.to_thread(health_report)
-        await update.message.reply_text(report[:4000])
+        extra = (
+            f"\nrate_limit: {_limiter.max_calls}/{int(_limiter.window_seconds)}s"
+            f" remaining={_limiter.remaining(str(update.effective_user.id))}"
+        )
+        await update.message.reply_text((report + extra)[:4000])
 
     async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        if not await _authorized(update):
+        if not await _authorized(update) or not await _rate_ok(update):
             return
         text = (update.message.text or "").strip()
         if not text:
@@ -102,7 +127,8 @@ def run_telegram() -> None:
         log.info("telegram user=%s text=%s", update.effective_user.id, text[:200])
 
         def _run() -> str:
-            return run_agent(text, verbose=False)
+            result = run_agent(text, verbose=False, as_structured=True)
+            return _format_answer(result)
 
         try:
             answer = await asyncio.to_thread(_run)
@@ -116,17 +142,18 @@ def run_telegram() -> None:
             for i in range(0, len(answer), 4000):
                 await update.message.reply_text(answer[i : i + 4000])
 
-    app = (
-        Application.builder()
-        .token(token)
-        .build()
-    )
+    app = Application.builder().token(token).build()
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("dream", cmd_dream))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
 
-    log.info("telegram bot starting (allowed=%s)", allowed or "all")
+    log.info(
+        "telegram bot starting (allowed=%s limit=%s/%ss)",
+        allowed or "all",
+        _limiter.max_calls,
+        int(_limiter.window_seconds),
+    )
     print("Telegram bot running. Ctrl+C to stop.")
     app.run_polling(drop_pending_updates=True)
