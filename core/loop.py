@@ -13,10 +13,16 @@ from core.tools import TOOLS_SPEC, execute_tool
 from memory.store import init_memory, add_memory, load_static_context
 from memory.dream import note_session, maybe_auto_dream
 from core.verifier import verify_answer
+from core.response import build_structured_answer, AgentAnswer
 
 
-def run_agent(user_message: str, verbose: bool = True) -> str:
-    """Agentic loop: tool-first, low temperature, reflection, verifier."""
+def run_agent(
+    user_message: str,
+    verbose: bool = True,
+    *,
+    as_structured: bool | None = None,
+) -> str | AgentAnswer:
+    """Agentic loop: tool-first, reflection, verifier, optional structured output."""
     init_memory()
     context = load_static_context()
 
@@ -64,8 +70,11 @@ def run_agent(user_message: str, verbose: bool = True) -> str:
                 log.info("reflection pass triggered (no tools used yet)")
                 continue
 
+            verified = False
             if getattr(cfg, "use_verifier", True):
+                before = final
                 final = verify_answer(user_message, final, tool_trace)
+                verified = final != before or bool(tool_trace)
             add_memory(
                 f"User: {user_message}\nAgent: {final[:1500]}\nTools: {tools_used}"
             )
@@ -74,6 +83,11 @@ def run_agent(user_message: str, verbose: bool = True) -> str:
             if auto and verbose:
                 print(f"  [auto-dream] {auto}")
             log.info("final answer (%s chars), tools=%s", len(final), tools_used)
+            use_struct = cfg.structured_output if as_structured is None else as_structured
+            if use_struct:
+                return build_structured_answer(
+                    final, tools_used, tool_trace, verified=verified
+                )
             return final
 
         for call in tool_calls:
@@ -103,18 +117,11 @@ def run_agent(user_message: str, verbose: bool = True) -> str:
                 print(f"    [{status}|{result.risk}] {preview}...")
             log.info(
                 "tool_result name=%s success=%s risk=%s len=%s",
-                name,
-                result.success,
-                result.risk,
-                len(result.output),
+                name, result.success, result.risk, len(result.output),
             )
 
             messages.append(
-                {
-                    "role": "tool",
-                    "name": name,
-                    "content": result.model_dump_json(),
-                }
+                {"role": "tool", "name": name, "content": result.model_dump_json()}
             )
 
     log.warning("turn limit reached")
