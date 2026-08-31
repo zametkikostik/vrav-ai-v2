@@ -13,7 +13,8 @@ from core.tools import TOOLS_SPEC, execute_tool
 from memory.store import init_memory, add_memory, load_static_context
 from memory.dream import note_session, maybe_auto_dream
 from core.verifier import verify_answer
-from core.response import build_structured_answer, AgentAnswer
+from core.response import AgentAnswer, extract_sources_from_trace, estimate_confidence
+from core.json_schema import FINAL_JSON_INSTRUCTION, parse_agent_json, merge_structured
 
 
 def run_agent(
@@ -22,11 +23,13 @@ def run_agent(
     *,
     as_structured: bool | None = None,
 ) -> str | AgentAnswer:
-    """Agentic loop: tool-first, reflection, verifier, optional structured output."""
+    """Agentic loop: tool-first, reflection, verifier, JSON final schema."""
     init_memory()
     context = load_static_context()
 
     system = SYSTEM_PROMPT
+    if getattr(cfg, "prefer_json_final", True):
+        system += "\n" + FINAL_JSON_INSTRUCTION
     if context:
         system += "\n\n## Loaded context\n" + context
 
@@ -85,10 +88,20 @@ def run_agent(
             log.info("final answer (%s chars), tools=%s", len(final), tools_used)
             use_struct = cfg.structured_output if as_structured is None else as_structured
             if use_struct:
-                return build_structured_answer(
-                    final, tools_used, tool_trace, verified=verified
+                parsed = parse_agent_json(final)
+                final_text = parsed.answer if parsed is not None else final
+                sources = extract_sources_from_trace(tool_trace)
+                conf = estimate_confidence(tool_trace, verified)
+                return merge_structured(
+                    parsed,
+                    final_text,
+                    tools_used,
+                    sources,
+                    verified=verified,
+                    confidence=conf,
                 )
-            return final
+            parsed = parse_agent_json(final)
+            return parsed.answer if parsed else final
 
         for call in tool_calls:
             name = call["function"]["name"]
